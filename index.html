@@ -700,7 +700,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
       <!-- 图像生成 -->
       <div class="aigc-card aigc-img">
         <div class="aigc-icon">🖼️</div>
-        <div class="aigc-title">��像生成</div>
+        <div class="aigc-title">  像生成</div>
         <div class="aigc-tool">推荐工具：Midjourney / Stable Diffusion / 即梦 / 文心一格</div>
         <ol class="aigc-steps">
           <li>确定画面主体：人/物/场景，想清楚要什么</li>
@@ -1037,7 +1037,7 @@ let lastUpdateTime = '';
 async function apiFetch(path){
   const url = API_BASE ? API_BASE + path : path;
   try{
-    const resp = await fetch(url, {signal: AbortSignal.timeout(30000)});
+    const resp = await fetch(url, {signal: AbortSignal.timeout(45000)});
     if(!resp.ok) throw new Error(resp.status);
     return await resp.json();
   }catch(e){
@@ -1100,7 +1100,7 @@ async function loadMarket(){
   
   const data = await apiFetch('/api/market');
   if(!data || !data.markets || data.markets.length===0){
-    marketEl.innerHTML = '<div class="market-item" style="background:var(--bg);grid-column:1/-1;text-align:center"><div class="market-name">⚠️ 行情加��失败（A股非交易时间数据为上一交易日收盘）</div></div>';
+    marketEl.innerHTML = '<div class="market-item" style="background:var(--bg);grid-column:1/-1;text-align:center"><div class="market-name">⚠️ 行情加  失败（A股非交易时间数据为上一交易日收盘）</div></div>';
     return;
   }
   
@@ -1117,19 +1117,6 @@ async function loadMarket(){
   
   // 更新时间
   if(data.time) document.getElementById('marketTime').textContent = '📊 '+data.time+' 更新';
-}
-
-// --- AIGC 每日提示 ---
-async function loadAIGCTips(){
-  const data = await apiFetch('/api/aigc');
-  if(!data || !data.tips) return;
-  
-  const tipEl = document.getElementById('aigcDailyTip');
-  if(!tipEl) return;
-  
-  const todayIdx = new Date().getDate() % data.tips.length;
-  const tip = data.tips[todayIdx];
-  tipEl.innerHTML = `<strong>📌 今日${tip.category}工具「${tip.tool}」：</strong>${tip.tip}`;
 }
 
 // --- 初始化所有实时数据 ---
@@ -1182,24 +1169,32 @@ ladder.forEach(l=>{
 // ===== 英语单词（从API动态获取） =====
 async function loadEngWords(){
   const el = document.getElementById('engWords');
-  el.innerHTML = '<div style="padding:10px;text-align:center;color:var(--text-light)">⏳ 加载今日单词...</div>';
+  if(!el) return;
+  el.innerHTML = '<div style="padding:10px;text-align:center;color:var(--text-light)">⏳ 正在从DeepSeek生成新单词...</div>';
   const data = await apiFetch('/api/english/words');
-  if(!data || !data.words){ el.innerHTML='<div style="padding:10px;text-align:center;color:var(--text-light)">⚠️ 单词加载失败</div>'; return; }
+  if(!data || !data.words || data.words.length===0){
+    el.innerHTML='<div style="padding:10px;text-align:center;color:var(--text-light)">⚠️ 加载失败，点右上角🔄刷新重试</div>';
+    return;
+  }
   el.innerHTML = '';
   data.words.forEach(w=>{
-    el.innerHTML += `<div class="word-card"><div><div class="word-en">${w.en}</div><div class="word-phonetic">${w.phonetic||''}</div></div><div class="word-cn">${w.cn}<div class="word-association">🧠 ${w.assoc}</div></div></div>`;
+    el.innerHTML += `<div class="word-card"><div><div class="word-en">${w.en}</div><div class="word-phonetic">${w.phonetic||''}</div></div><div class="word-cn">${w.cn}<div class="word-association">🧠 ${w.assoc||''}</div></div></div>`;
   });
 }
 
 // ===== 日语单词（从API动态获取） =====
 async function loadJpnWords(){
   const el = document.getElementById('jpnWords');
-  el.innerHTML = '<div style="padding:10px;text-align:center;color:var(--text-light)">⏳ 加载今日单词...</div>';
+  if(!el) return;
+  el.innerHTML = '<div style="padding:10px;text-align:center;color:var(--text-light)">⏳ 正在从DeepSeek生成新单词...</div>';
   const data = await apiFetch('/api/japanese/words');
-  if(!data || !data.words){ el.innerHTML='<div style="padding:10px;text-align:center;color:var(--text-light)">⚠️ 单词加载失败</div>'; return; }
+  if(!data || !data.words || data.words.length===0){
+    el.innerHTML='<div style="padding:10px;text-align:center;color:var(--text-light)">⚠️ 加载失败，点右上角🔄刷新重试</div>';
+    return;
+  }
   el.innerHTML = '';
   data.words.forEach(w=>{
-    el.innerHTML += `<div class="word-card"><div><div class="word-en">${w.en}</div></div><div class="word-cn">${w.cn}<div class="word-association">🧠 ${w.assoc}</div></div></div>`;
+    el.innerHTML += `<div class="word-card"><div><div class="word-en">${w.en}</div></div><div class="word-cn">${w.cn}<div class="word-association">🧠 ${w.assoc||''}</div></div></div>`;
   });
 }
 
@@ -1270,7 +1265,11 @@ async function loadBook(){
 // ===== 每日电影（从API动态获取） =====
 async function loadMovie(){
   const data = await apiFetch('/api/movie');
-  if(!data || !data.title) return;
+  if(!data || !data.title){
+    const el = document.querySelector('#panel-movie .movie-title');
+    if(el) el.textContent = '⏳ 电影加载中，点刷新重试';
+    return;
+  }
   // 更新主推荐区
   const posterEl = document.querySelector('#panel-movie .movie-poster');
   if(posterEl){
@@ -1294,9 +1293,13 @@ async function loadMovie(){
 // ===== 每日AIGC提示（从API动态获取） =====
 async function loadAIGCDaily(){
   const data = await apiFetch('/api/aigc/daily');
-  if(!data || !data.tool) return;
   const el = document.getElementById('aigcDailyTip');
-  if(el) el.innerHTML = `<strong>📌 今日${data.category||'AI'}工具「${data.tool}」：</strong>${data.tip}`;
+  if(!el) return;
+  if(!data || !data.tool){
+    el.innerHTML = '<strong>📌 AIGC提示加载中，点刷新重试</strong>';
+    return;
+  }
+  el.innerHTML = `<strong>📌 今日${data.category||'AI'}工具「${data.tool}」：</strong>${data.tip}`;
 }
 
 // ===== 理财资讯 =====
