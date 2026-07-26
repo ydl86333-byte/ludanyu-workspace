@@ -1014,8 +1014,7 @@ async function loadTasks(){
   const badge = document.getElementById('taskBadge');
   if(badge) badge.textContent = data.tasks.length;
 }
-loadTasks();
-document.getElementById('totalCount').textContent='共 '+tasks.length+' 项任务';
+document.getElementById('totalCount').textContent='今日任务';
 
 const taskStates=JSON.parse(localStorage.getItem('taskStates')||'[]');
 function toggleTask(el,i){
@@ -1027,8 +1026,8 @@ function toggleTask(el,i){
 }
 function updateProgress(){
   const done=document.querySelectorAll('.task-check.done').length;
-  const total=tasks.length;
-  const pct=Math.round(done/total*100);
+  const total=document.querySelectorAll('.task-check').length || 8;
+  const pct=total>0?Math.round(done/total*100):0;
   const ring=document.getElementById('progressRing');
   const circ=2*Math.PI*34;
   ring.setAttribute('stroke-dasharray',circ);
