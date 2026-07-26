@@ -1229,12 +1229,15 @@ async function loadJpnWords(){
     return;
   }
   const counts = getWordCount('jpn_word_counts');
-  const filtered = data.words.filter(w => (counts[w.en]||0) < 3);
+  const filtered = data.words.filter(w => (counts[w.word||w.en]||0) < 3);
   const showWords = filtered.length >= 5 ? filtered : data.words;
   el.innerHTML = '';
   showWords.forEach(w=>{
-    addWordCount('jpn_word_counts', w.en);
-    el.innerHTML += `<div class="word-card"><div><div class="word-en">${w.en}</div></div><div class="word-cn">${w.cn}<div class="word-association">🧠 ${w.assoc||''}</div></div></div>`;
+    const word = w.word || w.en || '';
+    const kana = w.kana || '';
+    const romaji = w.romaji || '';
+    addWordCount('jpn_word_counts', word);
+    el.innerHTML += `<div class="word-card"><div><div class="word-en" style="font-size:22px">${word}</div><div class="word-phonetic">${kana ? kana + ' · ' : ''}${romaji}</div></div><div class="word-cn">${w.cn}<div class="word-association">🧠 ${w.assoc||''}</div></div></div>`;
   });
 }
 
