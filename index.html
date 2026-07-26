@@ -297,7 +297,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
       <h3 id="energyTitle">今天的你，已经很棒了</h3>
       <p id="energyText">情绪不好的时候，允许自己慢一点。每完成一件小事，都是在为未来的自己铺路。赚钱这件事，急不得，但绝不会辜负认真的人。</p>
     </div>
-    <button class="energy-change" onclick="nextEnergy()">换一条 ✨</button>
+    <button class="energy-change" onclick="nextEnergy(); event.stopPropagation();">换一条 ✨</button>
   </div>
 
   <!-- ============ 今日任务 ============ -->
@@ -947,6 +947,8 @@ function initEnergy(){
   loadEnergy();
 }
 function nextEnergy(){
+  const textEl = document.getElementById('energyText');
+  if(textEl) textEl.textContent = '⏳ 正在生成新的鼓励...';
   loadEnergy();
 }
 
@@ -974,26 +976,27 @@ function setMood(btn,emoji,label){
 }
 
 // ===== 今日任务 =====
-const tasks=[
-  {text:'看今日热点，选1个可二创话题',tag:'douyin',tagText:'抖音',time:'15分钟'},
-  {text:'写1条口播脚本（用模板填空）',tag:'douyin',tagText:'抖音',time:'20分钟'},
-  {text:'英语口语练习10分钟（今日情景对话）',tag:'eng',tagText:'英语',time:'10分钟'},
-  {text:'英语记单词5个（联想记忆法）',tag:'eng',tagText:'英语',time:'10分钟'},
-  {text:'日语口语练习10分钟',tag:'jpn',tagText:'日语',time:'10分钟'},
-  {text:'浏览理财资讯5分钟，了解市场情绪',tag:'money',tagText:'理财',time:'5分钟'},
-  {text:'读今日文学金句，抄写1句到笔记本',tag:'book',tagText:'文学',time:'5分钟'},
-  {text:'AIGC小练习（生成1张图或1段BGM）',tag:'aigc',tagText:'AIGC',time:'15分钟'},
-  {text:'看每日电影推荐，记录1个创作启发',tag:'movie',tagText:'电影',time:'5分钟'},
-  {text:'情绪打卡+复盘今天（写了什么、学了什么）',tag:'douyin',tagText:'复盘',time:'5分钟'}
-];
-const taskList=document.getElementById('taskList');
-tasks.forEach((t,i)=>{
-  const li=document.createElement('li');
-  li.className='task-item';
-  li.innerHTML=`<div class="task-check" onclick="toggleTask(this,${i})"></div><div class="task-content"><div class="task-text">${t.text}</div><div class="task-meta"><span class="task-tag tag-${t.tag}">${t.tagText}</span><span>⏱️ ${t.time}</span></div></div>`;
-  taskList.appendChild(li);
-});
-document.getElementById('taskBadge').textContent=tasks.length;
+// ===== 今日任务（从API动态获取，每次不同） =====
+async function loadTasks(){
+  const taskList = document.getElementById('taskList');
+  if(!taskList) return;
+  taskList.innerHTML = '<li style="padding:10px;color:var(--text-light)">⏳ 加载今日任务...</li>';
+  const data = await apiFetch('/api/tasks');
+  if(!data || !data.tasks || data.tasks.length===0){
+    taskList.innerHTML = '<li style="padding:10px;color:var(--text-light)">⚠️ 加载失败，点刷新重试</li>';
+    return;
+  }
+  taskList.innerHTML = '';
+  data.tasks.forEach((t,i)=>{
+    const li=document.createElement('li');
+    li.className='task-item';
+    li.innerHTML=`<div class="task-check" onclick="toggleTask(this,${i})"></div><div class="task-content"><div class="task-text">${t.text}</div><div class="task-meta"><span class="task-tag tag-${t.tag}">${t.tagText}</span><span>⏱️ ${t.time}</span></div></div>`;
+    taskList.appendChild(li);
+  });
+  const badge = document.getElementById('taskBadge');
+  if(badge) badge.textContent = data.tasks.length;
+}
+loadTasks();
 document.getElementById('totalCount').textContent='共 '+tasks.length+' 项任务';
 
 const taskStates=JSON.parse(localStorage.getItem('taskStates')||'[]');
@@ -1125,12 +1128,15 @@ async function initRealtimeData(){
     loadDouyinHot(),
     loadMarket(),
     loadAIGCDaily(),
+    loadAIGCExamples(),
     loadEngWords(),
     loadJpnWords(),
     loadEngDialogue(),
     loadQuote(),
     loadBook(),
     loadMovie(),
+    loadMovieList(),
+    loadTasks(),
     loadEnergy()
   ]);
 }
@@ -1166,7 +1172,20 @@ ladder.forEach(l=>{
   ladderEl.innerHTML+=`<div class="ladder-step"><div class="step-num">${l.num}</div><div class="step-content"><h4>${l.title}<span class="step-status status-${l.status}">${statusText}</span></h4><p>${l.desc}</p></div></div>`;
 });
 
-// ===== 英语单词（从API动态获取） =====
+// ===== 英语单词（从API动态获取，去重：同一单词最多出现3次） =====
+function getWordCount(key){
+  try{ return JSON.parse(localStorage.getItem(key)||'{}'); }catch{ return {}; }
+}
+function addWordCount(key, word){
+  const counts = getWordCount(key);
+  counts[word] = (counts[word]||0) + 1;
+  // 只保留最近200个单词的记录
+  const entries = Object.entries(counts);
+  if(entries.length > 200){
+    delete counts[entries[0][0]];
+  }
+  localStorage.setItem(key, JSON.stringify(counts));
+}
 async function loadEngWords(){
   const el = document.getElementById('engWords');
   if(!el) return;
@@ -1176,13 +1195,19 @@ async function loadEngWords(){
     el.innerHTML='<div style="padding:10px;text-align:center;color:var(--text-light)">⚠️ 加载失败，点右上角🔄刷新重试</div>';
     return;
   }
+  const counts = getWordCount('eng_word_counts');
+  // 过滤掉已经出现3次以上的单词
+  const filtered = data.words.filter(w => (counts[w.en]||0) < 3);
+  // 如果过滤后少于5个，就用原始数据
+  const showWords = filtered.length >= 5 ? filtered : data.words;
   el.innerHTML = '';
-  data.words.forEach(w=>{
+  showWords.forEach(w=>{
+    addWordCount('eng_word_counts', w.en);
     el.innerHTML += `<div class="word-card"><div><div class="word-en">${w.en}</div><div class="word-phonetic">${w.phonetic||''}</div></div><div class="word-cn">${w.cn}<div class="word-association">🧠 ${w.assoc||''}</div></div></div>`;
   });
 }
 
-// ===== 日语单词（从API动态获取） =====
+// ===== 日语单词（从API动态获取，去重：同一单词最多出现3次） =====
 async function loadJpnWords(){
   const el = document.getElementById('jpnWords');
   if(!el) return;
@@ -1192,8 +1217,12 @@ async function loadJpnWords(){
     el.innerHTML='<div style="padding:10px;text-align:center;color:var(--text-light)">⚠️ 加载失败，点右上角🔄刷新重试</div>';
     return;
   }
+  const counts = getWordCount('jpn_word_counts');
+  const filtered = data.words.filter(w => (counts[w.en]||0) < 3);
+  const showWords = filtered.length >= 5 ? filtered : data.words;
   el.innerHTML = '';
-  data.words.forEach(w=>{
+  showWords.forEach(w=>{
+    addWordCount('jpn_word_counts', w.en);
     el.innerHTML += `<div class="word-card"><div><div class="word-en">${w.en}</div></div><div class="word-cn">${w.cn}<div class="word-association">🧠 ${w.assoc||''}</div></div></div>`;
   });
 }
@@ -1302,6 +1331,34 @@ async function loadAIGCDaily(){
   el.innerHTML = `<strong>📌 今日${data.category||'AI'}工具「${data.tool}」：</strong>${data.tip}`;
 }
 
+// ===== AIGC四个案例（从API动态获取，每次不同） =====
+async function loadAIGCExamples(){
+  const data = await apiFetch('/api/aigc/examples');
+  if(!data || !data.image){
+    return;
+  }
+  // 图像
+  const imgEl = document.querySelector('#panel-aigc .aigc-img .card[style*="accent"]');
+  if(imgEl && data.image){
+    imgEl.innerHTML = `<div class="card-title" style="color:var(--accent)">🎯 今日实操范例：${data.image.tool}</div><p style="font-size:13px;line-height:1.8">${data.image.example}</p>`;
+  }
+  // 视频
+  const vidEl = document.querySelector('#panel-aigc .aigc-video .card[style*="purple"]');
+  if(vidEl && data.video){
+    vidEl.innerHTML = `<div class="card-title" style="color:var(--purple)">🎯 今日实操范例：${data.video.tool}</div><p style="font-size:13px;line-height:1.8">${data.video.example}</p>`;
+  }
+  // 提示词
+  const proEl = document.querySelector('#panel-aigc .aigc-prompt .card[style*="yellow"]');
+  if(proEl && data.prompt){
+    proEl.innerHTML = `<div class="card-title" style="color:#B45309">🎯 今日实操范例：${data.prompt.tool}</div><p style="font-size:13px;line-height:1.8">${data.prompt.example}</p>`;
+  }
+  // 音频
+  const audEl = document.querySelector('#panel-aigc .aigc-audio .card[style*="cyan"]');
+  if(audEl && data.audio){
+    audEl.innerHTML = `<div class="card-title" style="color:var(--cyan)">🎯 今日实操范例：${data.audio.tool}</div><p style="font-size:13px;line-height:1.8">${data.audio.example}</p>`;
+  }
+}
+
 // ===== 理财资讯 =====
 const goodNews=[
   {badge:'good',badgeText:'利好',title:'证监会主席吴清召开座谈会，与10家公募基金、券商座谈，释放稳市场信号',source:'百度百家号 · 今日'},
@@ -1339,21 +1396,27 @@ quotes.forEach((q,i)=>{
   quoteListEl.innerHTML+=`<p><strong style="color:var(--yellow)">${day}：</strong>${q}</p>`;
 });
 
-// ===== 电影列表 =====
-const movies=[
-  {title:'海街日记',type:'剧情·家庭',style:'写实治愈'},
-  {title:'布达佩斯大饭店',type:'喜剧·冒险',style:'对称构图·色彩美学'},
-  {title:'小森林',type:'剧情·生活',style:'食物美学·四季流'},
-  {title:'花样年华',type:'爱情·剧情',style:'王家卫·情绪光影'},
-  {title:'白日梦想家',type:'冒险·剧情',style:'风光摄影·励志'},
-  {title:'海街日记',type:'剧情·家庭',style:'是枝裕和·生活流'},
-  {title:'重庆森林',type:'爱情·剧情',style:'王家卫·都市疏离'}
-];
-const movieListEl=document.getElementById('movieList');
-movies.forEach((m,i)=>{
-  const day=['周一','周二','周三','周四','周五','周六','周日'][i%7];
-  movieListEl.innerHTML+=`<div style="padding:10px 0;border-bottom:1px solid var(--border);font-size:14px"><strong style="color:var(--red)">${day}：</strong><strong>${m.title}</strong> <span style="color:var(--text-light);font-size:12px">｜${m.type}｜${m.style}</span></div>`;
-});
+// ===== 电影列表（从API动态获取，每次不同） =====
+async function loadMovieList(){
+  const el = document.getElementById('movieList');
+  if(!el) return;
+  el.innerHTML = '<div style="padding:10px;color:var(--text-light)">⏳ 加载电影列表...</div>';
+  const data = await apiFetch('/api/movie/list');
+  if(!data || !data.movies || data.movies.length===0){
+    el.innerHTML = '<div style="padding:10px;color:var(--text-light)">⚠️ 加载失败，点刷新重试</div>';
+    return;
+  }
+  const counts = getWordCount('movie_list_counts');
+  const filtered = data.movies.filter(m => (counts[m.title]||0) < 3);
+  const showMovies = filtered.length >= 4 ? filtered : data.movies;
+  el.innerHTML = '';
+  const days = ['周一','周二','周三','周四','周五','周六','周日'];
+  showMovies.forEach((m,i)=>{
+    addWordCount('movie_list_counts', m.title);
+    el.innerHTML += `<div style="padding:10px 0;border-bottom:1px solid var(--border);font-size:14px"><strong style="color:var(--red)">${days[i%7]}：</strong><strong>${m.title}</strong> <span style="color:var(--text-light);font-size:12px">｜${m.type||''}｜${m.style||''}</span></div>`;
+  });
+}
+loadMovieList();
 </script>
 <!-- Service Worker 注册 -->
 <script>
