@@ -909,15 +909,33 @@ function closeSidebar(){
   document.getElementById('sidebarOverlay').classList.remove('show');
 }
 
-// ===== 导航切换 =====
+// ===== 导航切换（切换到哪个页面就只刷新哪个页面） =====
+const panelLoaders = {
+  'today': ['loadTasks', 'loadEnergy'],
+  'douyin': ['loadDouyinHot'],
+  'english': ['loadEngWords', 'loadEngDialogue'],
+  'japanese': ['loadJpnWords'],
+  'finance': ['loadMarket'],
+  'literature': ['loadQuote', 'loadBook'],
+  'aigc': ['loadAIGCDaily', 'loadAIGCExamples'],
+  'movie': ['loadMovie', 'loadMovieList']
+};
+const panelLoaded = {}; // 记录哪些页面已经加载过
+
 document.querySelectorAll('.nav-item').forEach(item=>{
   item.addEventListener('click',()=>{
     document.querySelectorAll('.nav-item').forEach(i=>i.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
     item.classList.add('active');
-    document.getElementById('panel-'+item.dataset.panel).classList.add('active');
+    const panel = item.dataset.panel;
+    document.getElementById('panel-'+panel).classList.add('active');
     closeSidebar();
     window.scrollTo(0,0);
+    // 只刷新当前页面（且只第一次进入时加载，之后靠刷新按钮）
+    if(!panelLoaded[panel] && panelLoaders[panel]){
+      panelLoaders[panel].forEach(fn => { if(window[fn]) window[fn](); });
+      panelLoaded[panel] = true;
+    }
   });
 });
 
@@ -1122,41 +1140,35 @@ async function loadMarket(){
   if(data.time) document.getElementById('marketTime').textContent = '📊 '+data.time+' 更新';
 }
 
-// --- 初始化所有实时数据 ---
-async function initRealtimeData(){
-  await Promise.all([
-    loadDouyinHot(),
-    loadMarket(),
-    loadAIGCDaily(),
-    loadAIGCExamples(),
-    loadEngWords(),
-    loadJpnWords(),
-    loadEngDialogue(),
-    loadQuote(),
-    loadBook(),
-    loadMovie(),
-    loadMovieList(),
-    loadTasks(),
-    loadEnergy()
-  ]);
-}
+// --- 刷新逻辑见下方 refreshAllData ---
 
-// --- 手动刷新 ---
+// --- 手动刷新（只刷新当前页面） ---
 function refreshAllData(){
-  // 显示全局刷新状态
-  const sections = ['hotList','marketOverview','engWords','jpnWords','aigcDailyTip'];
-  sections.forEach(id=>{
-    const el = document.getElementById(id);
-    if(el) el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-light)">🔄 刷新中...</div>';
+  // 找到当前激活的页面
+  const activePanel = document.querySelector('.panel.active');
+  if(!activePanel) return;
+  const panelId = activePanel.id.replace('panel-','');
+  const loaders = panelLoaders[panelId];
+  if(!loaders || loaders.length===0){
+    document.getElementById('updateTime').textContent = '🕐 此页面无需刷新';
+    return;
+  }
+  // 显示刷新中
+  document.getElementById('updateTime').textContent = '🔄 刷新中...';
+  // 只调用当前页面的加载函数
+  const promises = loaders.map(fn => {
+    if(window[fn]) return window[fn]();
+    return Promise.resolve();
   });
-  document.getElementById('marketEl') && (document.getElementById('marketOverview').innerHTML = '<div class="market-item" style="background:var(--bg);grid-column:1/-1"><div class="market-name">🔄 刷新中...</div></div>');
-  initRealtimeData().then(()=>{
-    document.getElementById('updateTime').textContent = '🕐 刚刚刷新';
+  Promise.all(promises).then(()=>{
+    document.getElementById('updateTime').textContent = '🕐 ' + panelId + ' 已刷新';
   });
 }
 
-// --- 启动 ---
-initRealtimeData();
+// --- 启动：只加载首页（今日任务页面） ---
+  loadEnergy();
+  loadTasks();
+  panelLoaded['today'] = true;
 
 // ===== 创作者成长阶梯 =====
 const ladder=[
